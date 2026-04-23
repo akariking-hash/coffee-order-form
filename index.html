@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>음료 주문 폼</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+    <main class="container">
+      <header class="header">
+        <div>
+          <h1 class="title">SI팀 음료 주문 받기</h1>
+          <p class="subtitle">
+            <strong>주문완료 전까지</strong>만 수정할 수 있어요.
+          </p>
+        </div>
+        <div class="status" id="statusBadge" aria-live="polite"></div>
+      </header>
+
+      <section class="panel" aria-label="주문 입력">
+        <div class="toolbar">
+          <button type="button" class="btn" id="historyBtn">과거주문내역</button>
+          <button type="button" class="btn btn-primary" id="completeBtn">
+            주문완료
+          </button>
+          <button type="button" class="btn btn-ghost" id="unlockBtn" hidden>
+            잠금해제
+          </button>
+          <div class="spacer"></div>
+        </div>
+
+        <form id="orderForm" autocomplete="off">
+          <div class="rows" id="rows"></div>
+        </form>
+
+        <footer class="footer">
+          <div class="hint">
+            - <strong>주문완료</strong>: 내역 저장 후 메뉴가 자동으로 비워져 다음 주문을 받을 수 있어요.
+          </div>
+
+        </footer>
+      </section>
+
+      <dialog class="dialog" id="historyDialog" aria-label="과거 주문 내역">
+        <div class="dialog-panel">
+          <header class="dialog-header">
+            <div>
+              <div class="dialog-title">과거 주문 내역</div>
+              <div class="dialog-subtitle" id="historySubtitle"></div>
+            </div>
+            <div class="dialog-actions">
+              <button type="button" class="btn btn-ghost" id="historyCloseBtn">닫기</button>
+            </div>
+          </header>
+          <div class="dialog-body" id="historyBody"></div>
+        </div>
+      </dialog>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
