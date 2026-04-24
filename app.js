@@ -25,7 +25,9 @@ const MENU_GROUPS = [
     label: "COFFEE",
     items: [
       "아메리카노 시그니처",
+      "아메리카노 시그니처 Large",
       "아메리카노 다크",
+      "아메리카노 다크 Large",
       "카페라떼",
       "수제 바닐라빈 라떼",
       "연유 라떼",
@@ -74,11 +76,28 @@ const MENU_GROUPS = [
   },
 ];
 
+const DIRECT_INPUT_KEY = "__직접입력__";
+
 const MENU_SET = new Set(MENU_GROUPS.flatMap((g) => g.items));
 
 function normalizeMenuValue(v) {
   const s = typeof v === "string" ? v.trim() : "";
-  return MENU_SET.has(s) ? s : "";
+  if (MENU_SET.has(s)) return s;
+  // 직접 입력값은 앞에 DIRECT_INPUT_KEY 접두사로 저장됨
+  if (s.startsWith(DIRECT_INPUT_KEY)) return s;
+  return "";
+}
+
+function isDirectInput(v) {
+  return typeof v === "string" && v.startsWith(DIRECT_INPUT_KEY);
+}
+
+function getDirectInputText(v) {
+  return isDirectInput(v) ? v.slice(DIRECT_INPUT_KEY.length) : "";
+}
+
+function makeDirectInputValue(text) {
+  return DIRECT_INPUT_KEY + text;
 }
 
 function todayKey(d = new Date()) {
@@ -150,7 +169,7 @@ function normalizeState(state) {
   const fixed = initial.members.map((m, i) => {
     const src = byName.get(m.name) && typeof byName.get(m.name) === "object" ? byName.get(m.name) : {};
     const menu = normalizeMenuValue(src.menu);
-    const hasMenu = Boolean(menu.trim());
+    const hasMenu = Boolean(menu.trim()) && (!isDirectInput(menu) || Boolean(getDirectInputText(menu)));
     return {
       index: i + 1,
       // 이름은 "현재 명단"을 강제(고정 멤버)
@@ -178,6 +197,78 @@ function el(tag, attrs = {}, ...children) {
     node.append(child);
   }
   return node;
+}
+
+function buildMenuSelectEl(value, onChange) {
+  const isDirect = isDirectInput(value);
+  const normalized = isDirect ? DIRECT_INPUT_KEY : normalizeMenuValue(value);
+  const hasValue = Boolean(normalized);
+  const select = el(
+    "select",
+    {
+      "aria-label": "메뉴 선택",
+      onchange: onChange,
+    },
+    el(
+      "option",
+      { value: "", disabled: true, selected: !hasValue, hidden: true },
+      "메뉴 선택해주세요.",
+    ),
+  );
+
+  // 직접 입력 옵션 (맨 위)
+  const etcGroup = el("optgroup", { label: "기타" });
+  etcGroup.append(el("option", { value: DIRECT_INPUT_KEY }, "✏️ 직접 입력(소소가 아닐 경우)"));
+  select.append(etcGroup);
+
+  for (const group of MENU_GROUPS) {
+    const optgroup = el("optgroup", { label: group.label });
+    for (const item of group.items) {
+      optgroup.append(el("option", { value: item }, item));
+    }
+    select.append(optgroup);
+  }
+
+  select.value = normalized || "";
+  return select;
+}
+
+function buildMenuField(value, onMenuChange) {
+  const isDirect = isDirectInput(value);
+  const directText = getDirectInputText(value);
+
+  const directInput = el("input", {
+    type: "text",
+    placeholder: "메뉴를 입력하세요",
+    "aria-label": "메뉴 직접 입력",
+    value: isDirect ? directText : "",
+  });
+  directInput.style.cssText = "display:none; margin-top:6px;";
+
+  const select = buildMenuSelectEl(value, (e) => {
+    const v = e.target.value;
+    if (v === DIRECT_INPUT_KEY) {
+      directInput.style.display = "block";
+      directInput.focus();
+      onMenuChange(makeDirectInputValue(directInput.value.trim()));
+    } else {
+      directInput.style.display = "none";
+      onMenuChange(v);
+    }
+  });
+
+  directInput.addEventListener("input", () => {
+    onMenuChange(makeDirectInputValue(directInput.value.trim()));
+  });
+
+  if (isDirect) {
+    directInput.style.display = "block";
+  }
+
+  const wrap = el("div", { class: "field menu-field-wrap" }, select, directInput);
+  wrap.style.cssText = "flex-direction:column; align-items:stretch; gap:0;";
+
+  return { wrap, getSelectEl: () => select, getInputEl: () => directInput };
 }
 
 function buildMenuSelect(value, onChange) {
@@ -316,8 +407,11 @@ function formatTime(iso) {
 }
 
 function markSaved(i) {
-  const draft = normalizeMenuValue(drafts.get(i) ?? "");
+  const rawDraft = drafts.get(i) ?? "";
+  const draft = normalizeMenuValue(rawDraft);
   if (!draft) return;
+  // 직접 입력의 경우 실제 표시 텍스트가 비어있으면 저장 안 함
+  if (isDirectInput(draft) && !getDirectInputText(draft)) return;
   const only = onlyTempFromMenu(draft);
   const tempDraft = only || String(draftTemps.get(i) ?? "").trim();
   if (!tempDraft) return;
@@ -345,8 +439,9 @@ function buildRow(member, i) {
 
   const draftValue = String(drafts.get(i) ?? member.menu ?? "");
   const lockedOnly = onlyTempFromMenu(draftValue);
-  const menuSelect = buildMenuSelect(draftValue, (e) => {
-    const nextMenu = String(e.target.value || "");
+
+  // 메뉴 변경 공통 로직 (select 변경 or 직접입력 텍스트 변경 시 호출)
+  function handleMenuChange(nextMenu, rowEl) {
     drafts.set(i, nextMenu);
     const only = onlyTempFromMenu(nextMenu);
     if (only) draftTemps.set(i, only);
@@ -354,18 +449,19 @@ function buildRow(member, i) {
       draftTemps.set(i, "");
       draftDecaf.set(i, false);
     }
-    const btn = e.target.closest(".row")?.querySelector("button[data-save='1']");
+    const row = rowEl ?? document.querySelector(`.row[data-idx='${i}']`);
+    const btn = row?.querySelector("button[data-save='1']");
+    const hasMenu = nextMenu.trim() && (!isDirectInput(nextMenu) || Boolean(getDirectInputText(nextMenu)));
     const tempOk = Boolean(only || String(draftTemps.get(i) ?? "").trim());
-    if (btn) btn.disabled = !(nextMenu.trim() && tempOk);
-    const wrap = e.target.closest(".row")?.querySelector("[data-temp-wrap='1']");
+    if (btn) btn.disabled = !(hasMenu && tempOk);
+    const wrap = row?.querySelector("[data-temp-wrap='1']");
     if (wrap) {
-      const disable = Boolean(only) || !nextMenu.trim();
+      const disable = Boolean(only) || !hasMenu;
       wrap.classList.toggle("is-disabled", disable);
       const ice = wrap.querySelector("button[data-temp-btn='ICE']");
       const hot = wrap.querySelector("button[data-temp-btn='HOT']");
       if (ice) ice.disabled = disable;
       if (hot) hot.disabled = disable;
-      // 메뉴가 비어있으면 이전 temp가 남아있더라도 표시/선택을 제거
       const v = disable && !only ? "" : (only || String(draftTemps.get(i) ?? "")) || "";
       for (const b of [ice, hot]) {
         if (!b) continue;
@@ -374,12 +470,15 @@ function buildRow(member, i) {
         b.setAttribute("aria-pressed", isOn ? "true" : "false");
       }
     }
-
-    const decafEl = e.target.closest(".row")?.querySelector("input[data-decaf='1']");
+    const decafEl = row?.querySelector("input[data-decaf='1']");
     if (decafEl) {
-      decafEl.disabled = !nextMenu.trim();
+      decafEl.disabled = !hasMenu;
       decafEl.checked = Boolean(draftDecaf.get(i));
     }
+  }
+
+  const { wrap: menuFieldWrap } = buildMenuField(draftValue, (nextMenu) => {
+    handleMenuChange(nextMenu, menuFieldWrap.closest(".row"));
   });
 
   const tempDisabled = Boolean(lockedOnly) || !draftValue.trim();
@@ -390,7 +489,8 @@ function buildRow(member, i) {
     onPick: (picked) => {
       const currentMenu = String(drafts.get(i) ?? "").trim();
       const currentOnly = onlyTempFromMenu(currentMenu);
-      if (!currentMenu || currentOnly) return;
+      const hasMenu = currentMenu && (!isDirectInput(currentMenu) || Boolean(getDirectInputText(currentMenu)));
+      if (!hasMenu || currentOnly) return;
       draftTemps.set(i, picked);
       const row = tempToggle.closest(".row");
       if (!row) return;
@@ -404,7 +504,7 @@ function buildRow(member, i) {
       }
 
       const btn = row.querySelector("button[data-save='1']");
-      if (btn) btn.disabled = !(Boolean(currentMenu) && Boolean(picked));
+      if (btn) btn.disabled = !(Boolean(hasMenu) && Boolean(picked));
     },
   });
 
@@ -414,7 +514,7 @@ function buildRow(member, i) {
     el("span", { class: "index" }, String(member.index)),
     nameInput,
   );
-  const menuField = el("div", { class: "field" }, menuSelect);
+  const menuField = menuFieldWrap;
   const tempField = el("div", { class: "" }, tempToggle);
 
   const decafInput = el("input", {
@@ -439,7 +539,12 @@ function buildRow(member, i) {
       class: "btn btn-primary btn-sm",
       onclick: () => markSaved(i),
       dataset: { save: "1" },
-      disabled: !String(drafts.get(i) ?? "").trim() || !(lockedOnly || String(draftTemps.get(i) ?? "").trim()),
+      disabled: (() => {
+        const d = String(drafts.get(i) ?? "");
+        const hasMenu = d.trim() && (!isDirectInput(d) || Boolean(getDirectInputText(d)));
+        const tempOk = Boolean(lockedOnly || String(draftTemps.get(i) ?? "").trim());
+        return !hasMenu || !tempOk;
+      })(),
     },
     "저장",
   );
@@ -467,9 +572,11 @@ function pushHistoryBatch() {
   const orders = state.members
     .map((m) => {
       const name = (m.name || "").trim();
-      const menu = (m.menu || "").trim();
+      const rawMenu = (m.menu || "").trim();
+      const displayMenu = isDirectInput(rawMenu) ? getDirectInputText(rawMenu) : rawMenu;
+      const menu = displayMenu;
       const temp = (m.temp || "").trim();
-      const only = onlyTempFromMenu(menu);
+      const only = onlyTempFromMenu(rawMenu);
       const finalTemp = only || temp;
       const tempPart = finalTemp && !only ? ` (${finalTemp})` : "";
       const decafPart = m.decaf ? " (디카페인)" : "";

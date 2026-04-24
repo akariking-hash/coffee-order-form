@@ -231,6 +231,7 @@ body {
   font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
+  color:#fff;
 }
 
 .dialog-subtitle {
@@ -493,6 +494,20 @@ input::placeholder {
   cursor: not-allowed;
 }
 
+.menu-field-wrap {
+  padding: 6px 12px !important;
+}
+
+.menu-field-wrap select {
+  padding: 4px 0;
+}
+
+.menu-field-wrap input[type="text"] {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 6px 0 4px 0;
+  font-size: 14px;
+}
+
 .footer {
   margin-top: 14px;
   padding-top: 14px;
@@ -503,7 +518,7 @@ input::placeholder {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
-  margin-top: 10px;
+  margin-top:10px;
 }
 
 @media (max-width: 720px) {
