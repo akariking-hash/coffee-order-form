@@ -218,7 +218,7 @@ function buildMenuSelectEl(value, onChange) {
 
   // 직접 입력 옵션 (맨 위)
   const etcGroup = el("optgroup", { label: "기타" });
-  etcGroup.append(el("option", { value: DIRECT_INPUT_KEY }, "✏️ 직접 입력(소소가 아닐 경우)"));
+  etcGroup.append(el("option", { value: DIRECT_INPUT_KEY }, "✏️ 직접 입력"));
   select.append(etcGroup);
 
   for (const group of MENU_GROUPS) {
@@ -372,11 +372,21 @@ function showToast(message, ms = 2000) {
 const drafts = new Map();
 const draftTemps = new Map();
 const draftDecaf = new Map();
+// 저장된 시점의 스냅샷 (버튼 비활성화 비교용)
+const savedSnapshots = new Map();
 for (let i = 0; i < state.members.length; i += 1) {
   const menu = state.members[i].menu || "";
   drafts.set(i, menu);
   draftTemps.set(i, menu.trim() ? state.members[i].temp || "" : "");
   draftDecaf.set(i, menu.trim() ? Boolean(state.members[i].decaf) : false);
+  // 이미 저장된 항목이면 스냅샷 기록
+  if (menu.trim() && state.members[i].savedAt) {
+    savedSnapshots.set(i, {
+      menu,
+      temp: state.members[i].temp || "",
+      decaf: Boolean(state.members[i].decaf),
+    });
+  }
 }
 
 function renderStatus() {
@@ -386,6 +396,15 @@ function renderStatus() {
     el("span", { class: "status-dot", "aria-hidden": "true" }),
     el("span", {}, "편집 가능: 언제든 수정 가능 (주문완료 시 내역 저장)"),
   );
+}
+
+function isDirtyFromSaved(i) {
+  const snap = savedSnapshots.get(i);
+  if (!snap) return true; // 저장된 적 없으면 항상 dirty
+  const curMenu = String(drafts.get(i) ?? "");
+  const curTemp = String(draftTemps.get(i) ?? "");
+  const curDecaf = Boolean(draftDecaf.get(i));
+  return curMenu !== snap.menu || curTemp !== snap.temp || curDecaf !== snap.decaf;
 }
 
 function updateMember(i, patch) {
@@ -424,8 +443,14 @@ function markSaved(i) {
   drafts.set(i, draft);
   draftTemps.set(i, tempDraft);
   draftDecaf.set(i, Boolean(draftDecaf.get(i)));
+  // 저장 스냅샷 갱신
+  savedSnapshots.set(i, {
+    menu: draft,
+    temp: tempDraft,
+    decaf: Boolean(draftDecaf.get(i)),
+  });
   renderRows();
-  showToast("저장되었습니다", 2000);
+  showToast("저장되었습니다", 800);
 }
 
 function buildRow(member, i) {
@@ -453,7 +478,7 @@ function buildRow(member, i) {
     const btn = row?.querySelector("button[data-save='1']");
     const hasMenu = nextMenu.trim() && (!isDirectInput(nextMenu) || Boolean(getDirectInputText(nextMenu)));
     const tempOk = Boolean(only || String(draftTemps.get(i) ?? "").trim());
-    if (btn) btn.disabled = !(hasMenu && tempOk);
+    if (btn) btn.disabled = !(hasMenu && tempOk) || !isDirtyFromSaved(i);
     const wrap = row?.querySelector("[data-temp-wrap='1']");
     if (wrap) {
       const disable = Boolean(only) || !hasMenu;
@@ -504,7 +529,7 @@ function buildRow(member, i) {
       }
 
       const btn = row.querySelector("button[data-save='1']");
-      if (btn) btn.disabled = !(Boolean(hasMenu) && Boolean(picked));
+      if (btn) btn.disabled = !(Boolean(hasMenu) && Boolean(picked)) || !isDirtyFromSaved(i);
     },
   });
 
@@ -525,6 +550,14 @@ function buildRow(member, i) {
   decafInput.dataset.decaf = "1";
   decafInput.addEventListener("change", (e) => {
     draftDecaf.set(i, Boolean(e.target.checked));
+    const row = decafInput.closest(".row");
+    const btn = row?.querySelector("button[data-save='1']");
+    if (btn) {
+      const d = String(drafts.get(i) ?? "");
+      const hasMenu = d.trim() && (!isDirectInput(d) || Boolean(getDirectInputText(d)));
+      const tempOk = Boolean(onlyTempFromMenu(d) || String(draftTemps.get(i) ?? "").trim());
+      btn.disabled = !(hasMenu && tempOk) || !isDirtyFromSaved(i);
+    }
   });
   const decafField = el(
     "div",
@@ -543,7 +576,8 @@ function buildRow(member, i) {
         const d = String(drafts.get(i) ?? "");
         const hasMenu = d.trim() && (!isDirectInput(d) || Boolean(getDirectInputText(d)));
         const tempOk = Boolean(lockedOnly || String(draftTemps.get(i) ?? "").trim());
-        return !hasMenu || !tempOk;
+        if (!hasMenu || !tempOk) return true;
+        return !isDirtyFromSaved(i); // 저장된 내용과 동일하면 비활성화
       })(),
     },
     "저장",
@@ -604,11 +638,57 @@ function clearMenus() {
     drafts.set(i, "");
     draftTemps.set(i, "");
     draftDecaf.set(i, false);
+    savedSnapshots.delete(i);
   }
   renderRows();
 }
 
+function buildExportText() {
+  const today = todayKey();
+  const orders = state.members
+    .map((m) => {
+      const rawMenu = (m.menu || "").trim();
+      if (!rawMenu) return null;
+      const displayMenu = isDirectInput(rawMenu) ? getDirectInputText(rawMenu) : rawMenu;
+      if (!displayMenu) return null;
+      const only = onlyTempFromMenu(rawMenu);
+      const temp = only || (m.temp || "").trim();
+      const decaf = m.decaf;
+      return { name: (m.name || "").trim(), menu: displayMenu, temp, decaf };
+    })
+    .filter(Boolean);
+
+  if (orders.length === 0) return null;
+
+  const countMap = new Map();
+  for (const o of orders) {
+    const tempPart = o.temp ? ` ${o.temp}` : "";
+    const decafPart = o.decaf ? " (디카페인)" : "";
+    const key = `${o.menu}${tempPart}${decafPart}`;
+    countMap.set(key, (countMap.get(key) ?? 0) + 1);
+  }
+  const sorted = Array.from(countMap.entries()).sort((a, b) => b[1] - a[1]);
+
+  const lines = [];
+  lines.push(`[ SI팀 음료 주문 - ${today} ]`);
+  lines.push(`총 ${orders.length}잔`);
+  lines.push("");
+  lines.push("── 메뉴 취합 ──");
+  for (const [key, count] of sorted) {
+    lines.push(`${key}  ${count}잔`);
+  }
+  lines.push("");
+  lines.push("── 개인별 주문 ──");
+  for (const o of orders) {
+    const tempPart = o.temp ? ` ${o.temp}` : "";
+    const decafPart = o.decaf ? " (디카페인)" : "";
+    lines.push(`${o.name}: ${o.menu}${tempPart}${decafPart}`);
+  }
+  return lines.join("\n");
+}
+
 function onComplete() {
+  const exportText = buildExportText();
   const saved = pushHistoryBatch();
   clearMenus();
   if (!saved) {
@@ -617,6 +697,14 @@ function onComplete() {
       el("span", {}, "저장할 메뉴가 없어서 내역은 추가되지 않았어요. (메뉴가 있는 항목만 저장)"),
     );
     setTimeout(renderStatus, 1800);
+    return;
+  }
+  if (exportText) {
+    navigator.clipboard.writeText(exportText).then(() => {
+      showToast("주문완료! 취합 내용이 복사됐어요 ✓", 2500);
+    }).catch(() => {
+      showToast("주문완료!", 1800);
+    });
   }
 }
 

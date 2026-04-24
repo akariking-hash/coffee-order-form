@@ -20,21 +20,55 @@
 
       <section class="panel" aria-label="주문 입력">
 
+
         <form id="orderForm" autocomplete="off">
           <div class="rows" id="rows"></div>
         </form>
 
         <footer class="footer">
           <button type="button" class="btn" id="historyBtn">과거주문내역</button>
-          <button type="button" class="btn btn-primary" id="completeBtn">
-            주문완료
-          </button>
+          <button type="button" class="btn btn-primary" id="completeBtn">주문완료</button>
           <div class="hint">
             - <strong>주문완료</strong>: 주문완료 버튼은 대표자 1명이 모든 주문을 받은 후 마지막에 눌러주세요. 리셋과 동시에 과거주문내역으로 저장됩니다.
           </div>
 
         </footer>
       </section>
+
+      <!-- 주문완료 확인 모달 -->
+      <dialog class="dialog" id="confirmDialog" aria-label="주문완료 확인">
+        <div class="dialog-panel">
+          <header class="dialog-header">
+            <div>
+              <div class="dialog-title">주문을 완료할까요?</div>
+              <div class="dialog-subtitle">완료하면 내역이 저장되고 메뉴가 초기화됩니다.</div>
+            </div>
+          </header>
+          <div class="dialog-body" style="display:flex; gap:10px; justify-content:flex-end;">
+            <button type="button" class="btn" id="confirmNoBtn">아니오</button>
+            <button type="button" class="btn btn-primary" id="confirmYesBtn">네, 완료할게요</button>
+          </div>
+        </div>
+      </dialog>
+
+      <!-- 주문 취합 결과 모달 -->
+      <dialog class="dialog" id="exportDialog" aria-label="주문 취합">
+        <div class="dialog-panel">
+          <header class="dialog-header">
+            <div>
+              <div class="dialog-title">📋 주문 취합</div>
+              <div class="dialog-subtitle">아래 내용을 복사해서 사용하세요.</div>
+            </div>
+            <div class="dialog-actions">
+              <button type="button" class="btn btn-primary" id="exportCopyBtn">복사</button>
+              <button type="button" class="btn btn-ghost" id="exportCloseBtn">닫기</button>
+            </div>
+          </header>
+          <div class="dialog-body">
+            <pre id="exportText" style="margin:0; white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:14px; line-height:1.7; color:var(--text);"></pre>
+          </div>
+        </div>
+      </dialog>
 
       <dialog class="dialog" id="historyDialog" aria-label="과거 주문 내역">
         <div class="dialog-panel">
