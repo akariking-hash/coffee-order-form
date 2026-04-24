@@ -218,7 +218,7 @@ function buildMenuSelectEl(value, onChange) {
 
   // 직접 입력 옵션 (맨 위)
   const etcGroup = el("optgroup", { label: "기타" });
-  etcGroup.append(el("option", { value: DIRECT_INPUT_KEY }, "✏️ 직접 입력"));
+  etcGroup.append(el("option", { value: DIRECT_INPUT_KEY }, "✏️ 직접 입력(소소가 아닐 경우)"));
   select.append(etcGroup);
 
   for (const group of MENU_GROUPS) {
@@ -699,13 +699,10 @@ function onComplete() {
     setTimeout(renderStatus, 1800);
     return;
   }
-  if (exportText) {
-    navigator.clipboard.writeText(exportText).then(() => {
-      showToast("주문완료! 취합 내용이 복사됐어요 ✓", 2500);
-    }).catch(() => {
-      showToast("주문완료!", 1800);
-    });
-  }
+  // 취합 텍스트 모달 표시
+  const exportTextEl = document.getElementById("exportText");
+  if (exportTextEl) exportTextEl.textContent = exportText ?? "";
+  exportDialog?.showModal?.();
 }
 
 function groupHistoryByDate(history) {
@@ -769,7 +766,44 @@ function renderHistoryDialog() {
   historyBody.replaceChildren(...entries);
 }
 
-completeBtn.addEventListener("click", onComplete);
+const confirmDialog = document.getElementById("confirmDialog");
+const confirmYesBtn = document.getElementById("confirmYesBtn");
+const confirmNoBtn = document.getElementById("confirmNoBtn");
+const exportDialog = document.getElementById("exportDialog");
+const exportCopyBtn = document.getElementById("exportCopyBtn");
+const exportCloseBtn = document.getElementById("exportCloseBtn");
+
+// 주문완료 → 확인 모달
+completeBtn.addEventListener("click", () => confirmDialog?.showModal?.());
+
+// 확인 모달: 아니오
+confirmNoBtn?.addEventListener("click", () => confirmDialog?.close?.());
+confirmDialog?.addEventListener("click", (e) => {
+  if (e.target === confirmDialog) confirmDialog.close();
+});
+
+// 확인 모달: 네 → 실제 완료 처리
+confirmYesBtn?.addEventListener("click", () => {
+  confirmDialog?.close?.();
+  onComplete();
+});
+
+// 취합 모달: 복사
+exportCopyBtn?.addEventListener("click", () => {
+  const text = document.getElementById("exportText")?.textContent ?? "";
+  navigator.clipboard.writeText(text).then(() => {
+    showToast("클립보드에 복사됐어요 ✓", 2000);
+  }).catch(() => {
+    showToast("복사에 실패했어요. 직접 선택해 복사해주세요.", 2500);
+  });
+});
+
+// 취합 모달: 닫기
+exportCloseBtn?.addEventListener("click", () => exportDialog?.close?.());
+exportDialog?.addEventListener("click", (e) => {
+  if (e.target === exportDialog) exportDialog.close();
+});
+
 if (unlockBtn) unlockBtn.hidden = true;
 
 historyBtn?.addEventListener("click", () => {
